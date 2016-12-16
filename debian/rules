@@ -1,0 +1,87 @@
+#!/usr/bin/make -f
+# See debhelper(7) (uncomment to enable)
+# output every command that modifies files on the build system.
+#DH_VERBOSE = 1
+
+# see EXAMPLES in dpkg-buildflags(1) and read /usr/share/dpkg/*
+DPKG_EXPORT_BUILDFLAGS = 1
+include /usr/share/dpkg/default.mk
+
+# see FEATURE AREAS in dpkg-buildflags(1)
+#export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+# see ENVIRONMENT in dpkg-buildflags(1)
+# package maintainers to append CFLAGS
+#export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
+# package maintainers to append LDFLAGS
+#export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
+
+export PYBUILD_NAME = echocv
+
+# Python versions
+PYVERSIONS=$(shell pyversions -v -r)
+CONFIGURE2_TARGETS = $(PYVERSIONS:%=override_dh_auto_configure-python%)
+BUILD2_TARGETS     = $(PYVERSIONS:%=override_dh_auto_build-python%)
+INSTALL2_TARGETS   = $(PYVERSIONS:%=override_dh_auto_install-python%)
+
+PY3VERSIONS=$(shell py3versions -v -r)
+CONFIGURE3_TARGETS = $(PY3VERSIONS:%=override_dh_auto_configure-python%)
+BUILD3_TARGETS     = $(PY3VERSIONS:%=override_dh_auto_build-python%)
+INSTALL3_TARGETS   = $(PY3VERSIONS:%=override_dh_auto_install-python%)
+
+# main packaging script based on dh7 syntax
+%:
+	dh $@ --with python2 --with python3 --buildsystem=cmake
+
+# Override configure targets
+override_dh_auto_configure: configure_python2 configure_python3
+	dh_auto_configure -- \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DBUILD_PYTHON=OFF \
+	-DBUILD_APPS=ON 
+
+configure_python2: $(CONFIGURE2_TARGETS)
+	@echo "Python2 versions configured."
+
+configure_python3: $(CONFIGURE3_TARGETS)
+	@echo "Python3 versions configured."
+
+override_dh_auto_configure-python%:
+	mkdir -p build-python$*
+	dh_auto_configure -a --builddirectory=build-python$* -- \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DBUILD_PYTHON=ON \
+	-DBUILD_APPS=OFF \
+	-DECHOCV_PYTHON_VERSION=$* \
+	-DPython_ADDITIONAL_VERSIONS=$*
+
+# Override build targets
+override_dh_auto_build: build_python2 build_python3
+	dh_auto_build
+
+build_python2: $(BUILD2_TARGETS)
+	@echo "Python2 versions built."
+
+build_python3: $(BUILD3_TARGETS)
+	@echo "Python3 versions built."
+
+override_dh_auto_build-python%:
+	dh_auto_build -a --builddirectory=build-python$*
+
+# Override install targets
+override_dh_auto_install: install_python2 install_python3
+	dh_auto_install
+
+install_python2: $(INSTALL2_TARGETS)
+	@echo "Python2 versions installed."
+
+install_python3: $(INSTALL3_TARGETS)
+	@echo "Python3 versions installed."
+
+override_dh_auto_install-python%:
+	dh_auto_install -a --builddirectory=build-python$*
+
+# Override clean targets
+override_dh_auto_clean:
+	dh_auto_clean
+	rm -rf build-python*
