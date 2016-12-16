@@ -7,6 +7,9 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
+#ifdef ENABLE_HIGHGUI
+#include <opencv2/highgui/highgui.hpp>
+#endif
 
 using namespace std;
 using namespace cv;
@@ -472,9 +475,10 @@ private:
 
 };
 
-
+#ifdef ENABLE_HIGHGUI
 bool debug = false;
 Mat debug_image;
+#endif
 
 CameraExtrinsics location;
 CameraIntrinsics parameters;
@@ -541,6 +545,7 @@ void handle_frame(Mat& image) {
 	vector<PatternDetection> detectedPatterns;
 	detector.detect(image, Mat(parameters.intrinsics), parameters.distortion, detectedPatterns);
 
+#ifdef ENABLE_HIGHGUI
 	if (debug) {
 		image.copyTo(debug_image);
 		for (size_t i = 0; i < detectedPatterns.size(); i++) {
@@ -548,14 +553,12 @@ void handle_frame(Mat& image) {
 		}
 		imshow("AR Track", debug_image);
 	}
+#endif
 
 	if (detectedPatterns.size() > 0) {
 
 		localize_camera(detectedPatterns);
-
 		location_publisher->send(location);
-		// TODO: publish
-
 	}
 }
 
@@ -623,7 +626,9 @@ int main(int argc, char** argv) {
 	location_publisher = make_shared<TypedPublisher<CameraExtrinsics> >(client, "location");
 
 	while (loop.wait(100)) {
+#ifdef ENABLE_HIGHGUI
 		if (debug) waitKey(1);
+#endif
 	}
 
 	exit(0);
