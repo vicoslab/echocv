@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include <iostream>
 #include <fstream>
 #include <memory>
@@ -21,19 +23,27 @@ bool autoset_parameters = true;
 
 int main(int argc, char** argv) {
 
-    IOLoop loop;
+    int cameraid = (argc < 2 ? 0 : atoi(argv[1]));
 
+    IOLoop loop;
     SharedClient client = connect(loop);
 
-    VideoCapture device(argc < 2 ? 0 : atoi(argv[1]));
-
-    if (!device.isOpened()) {
-        cerr << "Cannot open camera device" << endl;
-        return -1;
-    }
-
+    VideoCapture device;
     Mat frame;
-    device >> frame;
+
+    while (true) {
+        device.open(cameraid);
+
+        if (device.isOpened()) {
+            device >> frame;
+            if (!frame.empty()) break;
+        }
+
+        cerr << "Cannot open camera device " << cameraid << endl;
+        
+        sleep(5000);
+
+    }
 
     FileStorage fsc("calibration.xml", FileStorage::READ);
     if (fsc.isOpened()) {
