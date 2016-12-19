@@ -20,7 +20,6 @@ bool autoset_parameters = true;
 
 #define READ_MATX(N, M) { Mat tmp; (N) >> tmp; (M) = tmp; }
 
-
 int main(int argc, char** argv) {
 
     int cameraid = (argc < 2 ? 0 : atoi(argv[1]));
@@ -31,19 +30,14 @@ int main(int argc, char** argv) {
     VideoCapture device;
     Mat frame;
 
-    while (true) {
-        device.open(cameraid);
+    device.open(cameraid);
 
-        if (device.isOpened()) {
-            device >> frame;
-            if (!frame.empty()) break;
-        }
-
+    if (!device.isOpened()) {
         cerr << "Cannot open camera device " << cameraid << endl;
-        
-        sleep(5000);
-
+        return -1;
     }
+
+    device >> frame;
 
     FileStorage fsc("calibration.xml", FileStorage::READ);
     if (fsc.isOpened()) {
@@ -68,7 +62,10 @@ int main(int argc, char** argv) {
 
     while (true) {
         device >> frame;
-        if (!frame.empty() && image_publisher->get_subscribers() > 0) {
+
+        if (frame.empty()) return -1;
+
+        if (image_publisher->get_subscribers() > 0) {
             image_publisher->send(frame);
         }
         if (!loop.wait(10)) break;
