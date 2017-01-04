@@ -192,16 +192,23 @@ public:
 		CvScalar color = cvScalar(255, 0, 255);
 
 		float size = pattern->getSize();
+		Matx44f offset = pattern->getOffset().inv();
 
-		Point3f origin = extractHomogeneous(pattern->getOffset().inv() * Scalar(0, 0, 0, 1));
+		Point3f origin = extractHomogeneous(offset * Scalar(0, 0, 0, 1));
+		Point3f originx = extractHomogeneous(offset * Scalar(size, 0, 0, 1));
+		Point3f originy = extractHomogeneous(offset * Scalar(0, size, 0, 1));
+		Point3f originz = extractHomogeneous(offset * Scalar(0, 0, size, 1));
 		std::vector<cv::Point2f> model2ImagePts;
 		//model 3D points: they must be projected to the image plane
-		Mat modelPts = (Mat_<float>(5, 3) <<
+		Mat modelPts = (Mat_<float>(8, 3) <<
 		                0, 0, 0,
 		                size, 0, 0,
 		                0, size, 0,
 		                0, 0, size,
-		                origin.x, origin.y, origin.z );
+		                origin.x, origin.y, origin.z,
+		                originx.x, originx.y, originx.z,
+		                originy.x, originy.y, originy.z,
+		                originz.x, originz.y, originz.z );
 
 		/* project model 3D points to the image. Points through the transformation matrix
 		(defined by rotVec and transVec) are "transfered" from the pattern CS to the
@@ -210,10 +217,15 @@ public:
 		*/
 		projectPoints(modelPts, rotVec, transVec, camMatrix, distMatrix, model2ImagePts);
 
-		cv::line(frame, model2ImagePts.at(0), model2ImagePts.at(4), cvScalar(255, 0, 255), 1);
+		
 		cv::line(frame, model2ImagePts.at(0), model2ImagePts.at(1), cvScalar(0, 0, 255), 3);
 		cv::line(frame, model2ImagePts.at(0), model2ImagePts.at(2), cvScalar(0, 255, 0), 3);
 		cv::line(frame, model2ImagePts.at(0), model2ImagePts.at(3), cvScalar(255, 0, 0), 3);
+
+		cv::line(frame, model2ImagePts.at(0), model2ImagePts.at(4), cvScalar(255, 0, 255), 1);
+		cv::line(frame, model2ImagePts.at(4), model2ImagePts.at(5), cvScalar(100, 100, 255), 1);
+		cv::line(frame, model2ImagePts.at(4), model2ImagePts.at(6), cvScalar(100, 255, 100), 1);
+		cv::line(frame, model2ImagePts.at(4), model2ImagePts.at(7), cvScalar(255, 100, 100), 1);
 
 		cv::putText(frame, pattern->getName(), model2ImagePts.at(0), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 155, 0), 1);
 
@@ -484,7 +496,7 @@ CameraExtrinsics location;
 CameraIntrinsics parameters;
 SharedTypedPublisher<CameraExtrinsics> location_publisher;
 SharedTypedSubscriber<CameraIntrinsics> parameters_listener;
-PatternDetector detector;
+Ptr<PatternDetector> detector;
 
 bool localize_camera(vector<PatternDetection> detections) {
 
@@ -497,17 +509,15 @@ bool localize_camera(vector<PatternDetection> detections) {
 	vector<Point3f> surfacePoints;
 	vector<Point2f> imagePoints;
 
-	Matx44f global = Matx44f::eye(); // rotationMatrix(0, 0, M_PI);
-
 	for (unsigned int i = 0; i < detections.size(); i++) {
 
 		float size = (float) detections[i].getPattern()->getSize();
 		Matx44f transform = detections[i].getPattern()->getOffset();
 
-		surfacePoints.push_back(extractHomogeneous(global * transform * Scalar(-size / 2, -size / 2, 0, 1)));
-		surfacePoints.push_back(extractHomogeneous(global * transform * Scalar(size / 2, -size / 2, 0, 1)));
-		surfacePoints.push_back(extractHomogeneous(global * transform * Scalar(size / 2, size / 2, 0, 1)));
-		surfacePoints.push_back(extractHomogeneous(global * transform * Scalar(-size / 2, size / 2, 0, 1)));
+		surfacePoints.push_back(extractHomogeneous(transform * Scalar(-size / 2, -size / 2, 0, 1)));
+		surfacePoints.push_back(extractHomogeneous(transform * Scalar(size / 2, -size / 2, 0, 1)));
+		surfacePoints.push_back(extractHomogeneous(transform * Scalar(size / 2, size / 2, 0, 1)));
+		surfacePoints.push_back(extractHomogeneous(transform * Scalar(-size / 2, size / 2, 0, 1)));
 
 		imagePoints.push_back(detections.at(i).getCorner(0));
 		imagePoints.push_back(detections.at(i).getCorner(1));
@@ -543,7 +553,9 @@ void handle_frame(Mat& image) {
 		return;
 
 	vector<PatternDetection> detectedPatterns;
-	detector.detect(image, Mat(parameters.intrinsics), parameters.distortion, detectedPatterns);
+
+	if (!detector.empty()) 
+		detector->detect(image, Mat(parameters.intrinsics), parameters.distortion, detectedPatterns);
 
 #ifdef ENABLE_HIGHGUI
 	if (debug) {
@@ -551,6 +563,23 @@ void handle_frame(Mat& image) {
 		for (size_t i = 0; i < detectedPatterns.size(); i++) {
 			detectedPatterns.at(i).draw(debug_image, Mat(parameters.intrinsics), parameters.distortion);
 		}
+
+		std::vector<cv::Point2f> model2ImagePts;
+		Mat modelPts = (Mat_<float>(4, 3) <<
+		                0, 0, 0,
+		                30, 0, 0,
+		                0, 30, 0,
+		                0, 0, 30);
+
+		Mat rotVec;
+		Rodrigues(location.rotation, rotVec);
+
+		projectPoints(modelPts, rotVec, location.translation, Mat(parameters.intrinsics), parameters.distortion, model2ImagePts);
+
+		cv::line(debug_image, model2ImagePts.at(0), model2ImagePts.at(1), cvScalar(0, 0, 255), 5);
+		cv::line(debug_image, model2ImagePts.at(0), model2ImagePts.at(2), cvScalar(0, 255, 0), 5);
+		cv::line(debug_image, model2ImagePts.at(0), model2ImagePts.at(3), cvScalar(255, 0, 0), 5);
+
 		imshow("AR Track", debug_image);
 	}
 #endif
@@ -564,21 +593,18 @@ void handle_frame(Mat& image) {
 
 using namespace std::experimental::filesystem::v1;
 
-int main(int argc, char** argv) {
+Ptr<PatternDetector> load_detector(const string& description) {
 
-	if (argc < 2) {
-		cerr << "No AR board description specified." << endl;
-		exit(-1);
-	}
+	Ptr<PatternDetector> detector = Ptr<PatternDetector>(new PatternDetector());
 
-	FileStorage fs(argv[1], FileStorage::READ);
+	FileStorage fs(description, FileStorage::READ);
 
 	if (!fs.isOpened()) {
 		cerr << "Invalid AR board description." << endl;
-		exit(-1);
+		return Ptr<PatternDetector>();
 	}
 
-	path descriptor_path = path(argv[1]);
+	path descriptor_path = path(description);
 
 	for (FileNodeIterator it = fs.root().begin(); it != fs.root().end(); ++it) {
 		int template_size;
@@ -596,7 +622,7 @@ int main(int argc, char** argv) {
 		ry = M_PI * (ry) / 180;
 		rz = M_PI * (rz) / 180;
 
-		Matx44f offset = rotationMatrix(rx, ry, rz) * translationMatrix(ox, oy, oz);
+		Matx44f offset = translationMatrix(ox, oy, oz) * rotationMatrix(rx, ry, rz);
 
 		path filename = string((*it).name());
 		string template_file = filename.is_relative() ? descriptor_path.parent_path() / filename : filename;
@@ -605,9 +631,26 @@ int main(int argc, char** argv) {
 		if (template_name.empty())
 			template_name = string(filename.filename());
 
-		detector.loadPattern(template_file, template_name, template_size, offset);
+		detector->loadPattern(template_file, template_name, template_size, offset);
 
 	}
+
+	return detector;
+
+}
+
+int main(int argc, char** argv) {
+
+	if (argc < 2) {
+		cerr << "No AR board description specified." << endl;
+		exit(-1);
+	}
+
+#ifdef ENABLE_HIGHGUI
+	debug = getenv("SHOW_DEBUG") != NULL;
+#endif
+
+	detector = load_detector(argv[1]);
 
 	IOLoop loop;
 
@@ -627,7 +670,13 @@ int main(int argc, char** argv) {
 
 	while (loop.wait(100)) {
 #ifdef ENABLE_HIGHGUI
-		if (debug) waitKey(1);
+		if (debug) {
+			int k = waitKey(1);
+			if ((char)k == 'r') {
+				cout << "Reloading markers" << endl;
+				detector = load_detector(argv[1]);
+			}
+		}
 #endif
 	}
 
