@@ -90,10 +90,16 @@ IF (BUILD_APPS)
 ADD_EXECUTABLE(echocv_camera src/cameraserver.cpp)
 TARGET_LINK_LIBRARIES(echocv_camera ${echolib_LIBRARIES} echocv m ${OpenCV_LIBS})
 
+ADD_EXECUTABLE(echocv_image src/imageserver.cpp)
+TARGET_LINK_LIBRARIES(echocv_image ${echolib_LIBRARIES} echocv m ${OpenCV_LIBS})
+
+ADD_EXECUTABLE(echocv_video src/videoserver.cpp)
+TARGET_LINK_LIBRARIES(echocv_video ${echolib_LIBRARIES} echocv m ${OpenCV_LIBS})
+
 ADD_EXECUTABLE(echocv_artrack src/artrack.cpp)
 TARGET_LINK_LIBRARIES(echocv_artrack ${echolib_LIBRARIES} echocv m ${OpenCV_LIBS} stdc++fs)
 
-install(TARGETS echocv_camera echocv_artrack DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS echocv_camera echocv_image echocv_video echocv_artrack DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ENDIF ()
 
