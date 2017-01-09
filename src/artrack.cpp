@@ -57,6 +57,31 @@ Point3f extractHomogeneous(Matx41f hv)
 	return f;
 }
 
+void drawSystem(Mat& image, Mat rotVec, Mat transVec, Mat intrinsics, Mat distortion, int size = 30, int width = 3) {
+
+		std::vector<cv::Point2f> model2ImagePts;
+		Mat modelPts = (Mat_<float>(4, 3) <<
+		                0, 0, 0,
+		                size, 0, 0,
+		                0, size, 0,
+		                0, 0, size);
+
+		projectPoints(modelPts, rotVec, transVec, intrinsics, distortion, model2ImagePts);
+		Mat rotation;
+		Rodrigues(rotVec, rotation);
+
+		bool up = cv::sum(rotation.col(2))[0] > 0;
+
+		if (!up)
+			cv::line(image, model2ImagePts.at(0), model2ImagePts.at(3), cvScalar(255, 100, 100), width);
+
+		cv::line(image, model2ImagePts.at(0), model2ImagePts.at(1), cvScalar(0, 0, 255), width);
+		cv::line(image, model2ImagePts.at(0), model2ImagePts.at(2), cvScalar(0, 255, 0), width);
+		if (up)
+			cv::line(image, model2ImagePts.at(0), model2ImagePts.at(3), cvScalar(255, 0, 0), width);
+
+}
+
 class Pattern {
 public:
 	Pattern(int id, float size, const string& filename, const string& name, Matx44f offset = Matx44f::eye()) :
@@ -202,9 +227,6 @@ public:
 		//model 3D points: they must be projected to the image plane
 		Mat modelPts = (Mat_<float>(8, 3) <<
 		                0, 0, 0,
-		                size, 0, 0,
-		                0, size, 0,
-		                0, 0, size,
 		                origin.x, origin.y, origin.z,
 		                originx.x, originx.y, originx.z,
 		                originy.x, originy.y, originy.z,
@@ -217,15 +239,12 @@ public:
 		*/
 		projectPoints(modelPts, rotVec, transVec, camMatrix, distMatrix, model2ImagePts);
 
-		
-		cv::line(frame, model2ImagePts.at(0), model2ImagePts.at(1), cvScalar(0, 0, 255), 3);
-		cv::line(frame, model2ImagePts.at(0), model2ImagePts.at(2), cvScalar(0, 255, 0), 3);
-		cv::line(frame, model2ImagePts.at(0), model2ImagePts.at(3), cvScalar(255, 0, 0), 3);
+		drawSystem(frame,  rotVec, transVec, camMatrix, distMatrix, 30, 3);
 
-		cv::line(frame, model2ImagePts.at(0), model2ImagePts.at(4), cvScalar(255, 0, 255), 1);
-		cv::line(frame, model2ImagePts.at(4), model2ImagePts.at(5), cvScalar(100, 100, 255), 1);
-		cv::line(frame, model2ImagePts.at(4), model2ImagePts.at(6), cvScalar(100, 255, 100), 1);
-		cv::line(frame, model2ImagePts.at(4), model2ImagePts.at(7), cvScalar(255, 100, 100), 1);
+		cv::line(frame, model2ImagePts.at(0), model2ImagePts.at(1), cvScalar(255, 0, 255), 1);
+		cv::line(frame, model2ImagePts.at(1), model2ImagePts.at(2), cvScalar(100, 100, 255), 1);
+		cv::line(frame, model2ImagePts.at(1), model2ImagePts.at(3), cvScalar(100, 255, 100), 1);
+		cv::line(frame, model2ImagePts.at(1), model2ImagePts.at(4), cvScalar(255, 100, 100), 1);
 
 		cv::putText(frame, pattern->getName(), model2ImagePts.at(0), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 155, 0), 1);
 
@@ -265,7 +284,7 @@ private:
 class PatternDetector
 {
 public:
-	PatternDetector(double threshold = 5, int block_size = 45, double conf_threshold = 0.60)  {
+	PatternDetector(double threshold = 5, int block_size = 45, double conf_threshold = 0.70)  {
 
 
 		this->threshold = threshold;//for image thresholding
@@ -285,6 +304,8 @@ public:
 
 	int loadPattern(const string& filename, const string& name, double realsize = 50, Matx44f offset = Matx44f())  {
 
+		cout << "Loading pattern " << filename << endl;
+
 		library.push_back(make_shared<Pattern>(library.size(), realsize, filename, name, offset));
 
 		offsets.push_back(offset);
@@ -296,11 +317,9 @@ public:
 	void detect(const Mat &frame, const Mat& cameraMatrix, const Mat& distortions, vector<PatternDetection>& foundPatterns) {
 
 		Point2f roi2DPts[4];
-		Mat binImage2;
 
 		//binarize image
 		convertAndBinarize(frame, binImage, grayImage);
-		binImage.copyTo(binImage2);
 
 		int avsize = (binImage.rows + binImage.cols) / 2;
 
@@ -308,20 +327,20 @@ public:
 		vector<Point> polycont;
 
 		//find contours in binary image
-		cv::findContours(binImage2, contours, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE);
+		cv::findContours(binImage, contours, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE);
 
 		unsigned int i;
 		Point p;
 		int pMinX, pMinY, pMaxY, pMaxX;
-
 		for (i = 0; i < contours.size(); i++) {
 			Mat contourMat = Mat (contours[i]);
 			const double per = arcLength( contourMat, true);
 			//check the perimeter
-			if (per > (avsize / 4) && per < (4 * avsize)) {
+
+			if (per > (avsize / 6) && per < (4 * avsize)) {
+
 				polycont.clear();
 				approxPolyDP( contourMat, polycont, per * 0.02, true);
-
 				//check rectangularity and convexity
 				if (polycont.size() == 4 && isContourConvex(Mat (polycont))) {
 
@@ -381,7 +400,6 @@ public:
 					int orientation;
 
 					int id = identifyPattern(normROI, confidence, orientation);
-
 					//push-back pattern in the stack of foundPatterns and find its extrinsics
 					if (id >= 0) {
 
@@ -403,6 +421,7 @@ public:
 				}
 			}
 		}
+
 	}
 
 private:
@@ -422,11 +441,7 @@ private:
 		transVec.convertTo(transVec, CV_32F);
 	}
 
-	void convertAndBinarize(const Mat& src, Mat& dst1, Mat& dst2)
-	{
-
-		//dst1: binary image
-		//dst2: grayscale image
+	void convertAndBinarize(const Mat& src, Mat& dst1, Mat& dst2) {
 
 		if (src.channels() == 3) {
 			cvtColor(src, dst2, CV_BGR2GRAY);
@@ -450,6 +465,7 @@ private:
 		cv::warpPerspective( subImg, dst, homography, Size(dst.cols, dst.rows));
 
 	}
+
 	int identifyPattern(const Mat& src, double& confidence, int& orientation) {
 		if (library.size() < 1) {
 			return -1;
@@ -535,15 +551,6 @@ bool localize_camera(vector<PatternDetection> detections) {
 	transVec.convertTo(location.translation, CV_32F);
 	Rodrigues(rotVec, location.rotation);
 
-	/*
-		Mat extrinsics;
-		hconcat(rotation, translation, extrinsics);
-		Mat projection = intrinsics * extrinsics;
-		projection.col(0).copyTo(homography.col(0));
-		projection.col(1).copyTo(homography.col(1));
-		projection.col(3).copyTo(homography.col(2));
-	*/
-
 	return true;
 }
 
@@ -554,8 +561,14 @@ void handle_frame(Mat& image) {
 
 	vector<PatternDetection> detectedPatterns;
 
-	if (!detector.empty()) 
+	if (!detector.empty())
 		detector->detect(image, Mat(parameters.intrinsics), parameters.distortion, detectedPatterns);
+
+	if (detectedPatterns.size() > 0) {
+
+		localize_camera(detectedPatterns);
+		location_publisher->send(location);
+	}
 
 #ifdef ENABLE_HIGHGUI
 	if (debug) {
@@ -564,31 +577,15 @@ void handle_frame(Mat& image) {
 			detectedPatterns.at(i).draw(debug_image, Mat(parameters.intrinsics), parameters.distortion);
 		}
 
-		std::vector<cv::Point2f> model2ImagePts;
-		Mat modelPts = (Mat_<float>(4, 3) <<
-		                0, 0, 0,
-		                30, 0, 0,
-		                0, 30, 0,
-		                0, 0, 30);
-
 		Mat rotVec;
 		Rodrigues(location.rotation, rotVec);
 
-		projectPoints(modelPts, rotVec, location.translation, Mat(parameters.intrinsics), parameters.distortion, model2ImagePts);
-
-		cv::line(debug_image, model2ImagePts.at(0), model2ImagePts.at(1), cvScalar(0, 0, 255), 5);
-		cv::line(debug_image, model2ImagePts.at(0), model2ImagePts.at(2), cvScalar(0, 255, 0), 5);
-		cv::line(debug_image, model2ImagePts.at(0), model2ImagePts.at(3), cvScalar(255, 0, 0), 5);
+		drawSystem(debug_image, rotVec, Mat(location.translation), Mat(parameters.intrinsics), parameters.distortion, 80, 5);
 
 		imshow("AR Track", debug_image);
 	}
 #endif
 
-	if (detectedPatterns.size() > 0) {
-
-		localize_camera(detectedPatterns);
-		location_publisher->send(location);
-	}
 }
 
 using namespace std::experimental::filesystem::v1;
