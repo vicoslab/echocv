@@ -649,9 +649,7 @@ int main(int argc, char** argv) {
 
 	detector = load_detector(argv[1]);
 
-	IOLoop loop;
-
-	SharedClient client = echolib::connect(loop);
+	SharedClient client = echolib::connect();
 
 	location.rotation = Matx33f::eye();
 	location.translation = (Matx31f::zeros());
@@ -665,7 +663,10 @@ int main(int argc, char** argv) {
 	ImageSubscriber sub(client, "camera", handle_frame);
 	location_publisher = make_shared<TypedPublisher<CameraExtrinsics> >(client, "location");
 
-	while (loop.wait(100)) {
+	while (true) {
+
+		if (!echolib::wait(100))
+			break;
 #ifdef ENABLE_HIGHGUI
 		if (debug) {
 			int k = waitKey(1);

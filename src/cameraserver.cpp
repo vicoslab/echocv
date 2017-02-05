@@ -8,6 +8,7 @@
 #include <echolib/client.h>
 #include <echolib/datatypes.h>
 #include <echolib/helpers.h>
+#include <echolib/loop.h>
 
 #include "echolib/opencv.h"
 
@@ -24,8 +25,7 @@ int main(int argc, char** argv) {
 
     int cameraid = (argc < 2 ? 0 : atoi(argv[1]));
 
-    IOLoop loop;
-    SharedClient client = connect(loop);
+    SharedClient client = echolib::connect();
 
     VideoCapture device;
     Mat frame;
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
         if (image_publisher->get_subscribers() > 0) {
             image_publisher->send(frame);
         }
-        if (!loop.wait(10)) break;
+        if (!echolib::wait(10)) break;
     }
 
     exit(0);

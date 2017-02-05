@@ -21,8 +21,7 @@ int main(int argc, char** argv) {
 
     string filename(argv[1]);
 
-    IOLoop loop;
-    SharedClient client = connect(loop);
+    SharedClient client = echolib::connect();
 
     Mat frame;
 
@@ -58,7 +57,7 @@ int main(int argc, char** argv) {
         if (image_publisher->get_subscribers() > 0) {
             image_publisher->send(frame);
         }
-        if (!loop.wait(30)) break;
+        if (!echolib::wait(30)) break;
     }
 
     exit(0);

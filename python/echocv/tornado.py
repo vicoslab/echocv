@@ -11,8 +11,10 @@ import tornado.web
 
 def install_client(ioloop, client, callback=None):
     def _tornado_handler(fd, events):
-        if events | IOLoop.READ or events | IOLoop.WRITE:
-            client.handle()
+        if events | IOLoop.READ:
+            client.handle_input()
+        elif events | IOLoop.WRITE:
+            client.handle_output()
         else:
             client.disconnect()
             if callback:
