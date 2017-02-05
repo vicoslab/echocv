@@ -513,6 +513,7 @@ CameraIntrinsics parameters;
 SharedTypedPublisher<CameraExtrinsics> location_publisher;
 SharedTypedSubscriber<CameraIntrinsics> parameters_listener;
 Ptr<PatternDetector> detector;
+bool process_image;
 
 bool localize_camera(vector<PatternDetection> detections) {
 
@@ -556,7 +557,7 @@ bool localize_camera(vector<PatternDetection> detections) {
 
 void handle_frame(Mat& image) {
 
-	if (image.empty())
+	if (image.empty() || !process_image)
 		return;
 
 	vector<PatternDetection> detectedPatterns;
@@ -585,6 +586,8 @@ void handle_frame(Mat& image) {
 		imshow("AR Track", debug_image);
 	}
 #endif
+
+	process_image = false;
 
 }
 
@@ -665,8 +668,11 @@ int main(int argc, char** argv) {
 
 	while (true) {
 
+		process_image = true;
+
 		if (!echolib::wait(100))
 			break;
+
 #ifdef ENABLE_HIGHGUI
 		if (debug) {
 			int k = waitKey(1);
@@ -680,5 +686,4 @@ int main(int argc, char** argv) {
 
 	exit(0);
 }
-
 
