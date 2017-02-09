@@ -15,7 +15,7 @@ using namespace cv;
 namespace echolib {
 
 ImageSubscriber::ImageSubscriber(SharedClient client, const string &alias, function<void(Mat&)> callback) : 
-    ChunkedSubscriber(client, alias, string("opencv image")), callback(callback) {
+    ChunkedSubscriber(client, alias, string("opencv image"), 1), callback(callback) {
 
 }
 
