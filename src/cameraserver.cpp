@@ -49,6 +49,7 @@ int main(int argc, char** argv) {
         parameters.intrinsics(1, 1) = 700;
         parameters.intrinsics(0, 2) = (float)(frame.cols) / 2;
         parameters.intrinsics(1, 2) = (float)(frame.rows) / 2;
+        parameters.intrinsics(2, 3) = 1;
         parameters.distortion = (Mat_<double>(1,5) << 0, 0, 0, 0, 0);
         autoset_parameters = false;
     }
