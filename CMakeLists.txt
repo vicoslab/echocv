@@ -41,7 +41,7 @@ set_target_properties(echocv PROPERTIES
 include(CMakePackageConfigHelpers)
 
 set(LIB_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR})
-set(INCLUDE_INSTALL_DIR ${CMAKE_INSTALL_INCLUDEDIR}/echolib)
+set(INCLUDE_INSTALL_DIR ${CMAKE_INSTALL_INCLUDEDIR})
 
 configure_package_config_file(echocv-config.cmake.in
     ${PROJECT_BINARY_DIR}/echocv-config.cmake
