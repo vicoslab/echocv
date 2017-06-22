@@ -83,6 +83,7 @@ class VideoHandler(tornado.web.RequestHandler):
     def __init__(self, application, request, camera):
         super(VideoHandler, self).__init__(application, request)
         self.camera = camera
+        self.flushing = False
 
     @tornado.web.asynchronous
     def get(self):
@@ -93,16 +94,20 @@ class VideoHandler(tornado.web.RequestHandler):
         self.camera.listen_images(self)
 
     def push_image(self, image):
-        if len(self.boundary) < 1:
+        if len(self.boundary) < 1 or self.flushing:
             return
-
+        
         self.write(self.boundary)
         self.write("\r\n")
         self.write("Content-type: image/jpeg\r\n")
         self.write("Content-length: %d\r\n\r\n" % len(image))
         self.write(image)
         self.write("\r\n")
-        self.flush()
+        self.flushing = True
+        self.flush(callback=lambda: self.on_flush_complete())
+
+    def on_flush_complete(self):
+        self.flushing = False
 
     def on_finish(self):
         self.camera.unlisten_images(self)
