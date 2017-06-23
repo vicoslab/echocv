@@ -17,6 +17,8 @@ using namespace cv;
 
 CameraIntrinsics parameters;
 
+#define READ_MATX(N, M) { Mat tmp; (N) >> tmp; (M) = tmp; }
+
 int main(int argc, char** argv) {
 
     string filename(argv[1]);
@@ -32,12 +34,18 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    parameters.intrinsics(0, 0) = 700;
-    parameters.intrinsics(1, 1) = 700;
-    parameters.intrinsics(0, 2) = video.get(CV_CAP_PROP_FRAME_WIDTH) / 2;
-    parameters.intrinsics(1, 2) = video.get(CV_CAP_PROP_FRAME_HEIGHT) / 2;
-    parameters.intrinsics(2, 2) = 1; 
-    parameters.distortion = (Mat_<double>(1,5) << 0, 0, 0, 0, 0);
+    FileStorage fsc("calibration.xml", FileStorage::READ);
+    if (fsc.isOpened()) {
+        READ_MATX(fsc["intrinsic"], parameters.intrinsics);
+        fsc["distortion"] >> parameters.distortion;
+    } else {
+        parameters.intrinsics(0, 0) = 700;
+        parameters.intrinsics(1, 1) = 700;
+        parameters.intrinsics(0, 2) = video.get(CV_CAP_PROP_FRAME_WIDTH) / 2;
+        parameters.intrinsics(1, 2) = video.get(CV_CAP_PROP_FRAME_HEIGHT) / 2;
+        parameters.intrinsics(2, 2) = 1;
+        parameters.distortion = (Mat_<double>(1,5) << 0, 0, 0, 0, 0);
+    }
 
     parameters.width = video.get(CV_CAP_PROP_FRAME_WIDTH);
     parameters.height = video.get(CV_CAP_PROP_FRAME_HEIGHT);
