@@ -635,8 +635,21 @@ int main(int argc, char** argv) {
 		parameters_listener.reset();
 	});
 
-	ImageSubscriber sub(client, "camera", handle_frame);
+	shared_ptr<ImageSubscriber> sub;
 	location_publisher = make_shared<TypedPublisher<CameraExtrinsics> >(client, "location");
+
+	bool processing = false;
+
+    SubscriptionWatcher watcher(client, "location", [&processing, &sub, &client](int subscribers) {
+		processing = subscribers > 0;
+
+		if (processing && !sub) {
+			sub = make_shared<ImageSubscriber>(client, "camera", handle_frame);
+		}
+		if (!processing && sub) {
+			sub.reset();
+		}
+	});
 
 	while (true) {
 
