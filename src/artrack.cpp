@@ -503,17 +503,9 @@ private:
 
 };
 
-#ifdef ENABLE_HIGHGUI
-bool debug = false;
-Mat debug_image;
-#endif
-
+Mat image_current;
 CameraExtrinsics location;
 CameraIntrinsics parameters;
-SharedTypedPublisher<CameraExtrinsics> location_publisher;
-SharedTypedSubscriber<CameraIntrinsics> parameters_listener;
-Ptr<PatternDetector> detector;
-bool process_image;
 
 bool localize_camera(vector<PatternDetection> detections) {
 
@@ -557,37 +549,10 @@ bool localize_camera(vector<PatternDetection> detections) {
 
 void handle_frame(Mat& image) {
 
-	if (image.empty() || !process_image)
+	if (image.empty())
 		return;
 
-	vector<PatternDetection> detectedPatterns;
-
-	if (!detector.empty())
-		detector->detect(image, Mat(parameters.intrinsics), parameters.distortion, detectedPatterns);
-
-	if (detectedPatterns.size() > 0) {
-
-		localize_camera(detectedPatterns);
-		location_publisher->send(location);
-	}
-
-#ifdef ENABLE_HIGHGUI
-	if (debug) {
-		image.copyTo(debug_image);
-		for (size_t i = 0; i < detectedPatterns.size(); i++) {
-			detectedPatterns.at(i).draw(debug_image, Mat(parameters.intrinsics), parameters.distortion);
-		}
-
-		Mat rotVec;
-		Rodrigues(location.rotation, rotVec);
-
-		drawSystem(debug_image, rotVec, Mat(location.translation), Mat(parameters.intrinsics), parameters.distortion, 80, 5);
-
-		imshow("AR Track", debug_image);
-	}
-#endif
-
-	process_image = false;
+	image_current = image;
 
 }
 
@@ -639,6 +604,9 @@ Ptr<PatternDetector> load_detector(const string& description) {
 
 }
 
+SharedTypedPublisher<CameraExtrinsics> location_publisher;
+SharedTypedSubscriber<CameraIntrinsics> parameters_listener;
+
 int main(int argc, char** argv) {
 
 	if (argc < 2) {
@@ -647,8 +615,12 @@ int main(int argc, char** argv) {
 	}
 
 #ifdef ENABLE_HIGHGUI
+	bool debug = false;
+	Mat debug_image;
 	debug = getenv("SHOW_DEBUG") != NULL;
 #endif
+
+	Ptr<PatternDetector> detector;
 
 	detector = load_detector(argv[1]);
 
@@ -668,10 +640,41 @@ int main(int argc, char** argv) {
 
 	while (true) {
 
-		process_image = true;
-
 		if (!echolib::wait(100))
 			break;
+
+		if (!image_current.empty()) {
+
+			vector<PatternDetection> detectedPatterns;
+
+			if (!detector.empty())
+				detector->detect(image_current, Mat(parameters.intrinsics), parameters.distortion, detectedPatterns);
+
+			if (detectedPatterns.size() > 0) {
+
+				localize_camera(detectedPatterns);
+				location_publisher->send(location);
+			}
+
+			#ifdef ENABLE_HIGHGUI
+			if (debug) {
+				image_current.copyTo(debug_image);
+				for (size_t i = 0; i < detectedPatterns.size(); i++) {
+					detectedPatterns.at(i).draw(debug_image, Mat(parameters.intrinsics), parameters.distortion);
+				}
+
+				Mat rotVec;
+				Rodrigues(location.rotation, rotVec);
+
+				drawSystem(debug_image, rotVec, Mat(location.translation), Mat(parameters.intrinsics), parameters.distortion, 80, 5);
+
+				imshow("AR Track", debug_image);
+			}
+			#endif
+
+			image_current.release();
+
+		}
 
 #ifdef ENABLE_HIGHGUI
 		if (debug) {
@@ -686,4 +689,3 @@ int main(int argc, char** argv) {
 
 	exit(0);
 }
-

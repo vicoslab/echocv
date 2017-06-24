@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <memory>
+#include <chrono>
 #include <opencv2/opencv.hpp>
 
 #include <echolib/client.h>
@@ -58,15 +59,30 @@ int main(int argc, char** argv) {
 
     StaticPublisher<CameraIntrinsics> intrinsics_publisher = StaticPublisher<CameraIntrinsics>(client, "intrinsics", parameters);
 
+    double fps = 30;
+    if (getenv("LIMIT_FPS")) {
+        fps = min(1000.0, max(0.1, atof(getenv("LIMIT_FPS"))));
+    }
+
+    std::chrono::system_clock::time_point a = std::chrono::system_clock::now();
+    std::chrono::system_clock::time_point b = std::chrono::system_clock::now();
+
     while (true) {
         device >> frame;
+
+        a = std::chrono::system_clock::now();
+        std::chrono::duration<double, std::milli> work_time = a - b;
 
         if (frame.empty()) return -1;
 
         if (image_publisher->get_subscribers() > 0) {
             image_publisher->send(frame);
         }
-        if (!echolib::wait(10)) break;
+
+        std::chrono::duration<double, std::milli> delta_ms(1000.0 / fps - work_time.count());
+        auto delta_ms_duration = std::chrono::duration_cast<std::chrono::milliseconds>(delta_ms);
+
+        if (!echolib::wait(max(10, (int)delta_ms_duration.count()))) break;
     }
 
     exit(0);
