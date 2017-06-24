@@ -32,30 +32,27 @@ class Camera(object):
         self._image = None
         self._client = client
         self._parameters = echocv.CameraIntrinsicsSubscriber(client, "%s.parameters" % name, lambda x: self._parameters_callback(x))
-        self._location = echocv.CameraExtrinsicsSubscriber(client, "%s.location" % name, lambda x: self._location_callback(x))
-
-    def _subscribe(self):
-        self._image = echocv.ImageSubscriber(self._client, "%s.image" % self.name, lambda x: self._image_callback(x))
-
-    def _unsubscribe(self):
-        if len(self._image_listeners) == 0 and not self._image is None:
-            self._image = None
+        self._location = None
 
     def listen_images(self, listener):
         self._image_listeners.append(listener)
         if len(self._image_listeners) == 1 and self._image is None:
-            self._subscribe()
+            self._image = echocv.ImageSubscriber(self._client, "%s.image" % self.name, lambda x: self._image_callback(x))
 
     def unlisten_images(self, listener):
         self._image_listeners.remove(listener)
         if len(self._image_listeners) == 0 and not self._image is None:
-            self._unsubscribe()
+            self._image = None
 
     def listen_location(self, listener):
         self._location_listeners.append(listener)
+        if len(self._location_listeners) == 1 and self._location is None:
+            self._location = echocv.CameraExtrinsicsSubscriber(self._client, "%s.location" % self.name, lambda x: self._location_callback(x))
 
     def unlisten_location(self, listener):
         self._location_listeners.remove(listener)
+        if len(self._location_listeners) == 0 and not self._location is None:
+            self._location = None
 
     def _distribute_image(self, image):       
         for c in self._image_listeners:
@@ -83,7 +80,7 @@ class VideoHandler(tornado.web.RequestHandler):
     def __init__(self, application, request, camera):
         super(VideoHandler, self).__init__(application, request)
         self.camera = camera
-        self.flushing = False
+        self.writing = False
 
     @tornado.web.asynchronous
     def get(self):
@@ -93,21 +90,23 @@ class VideoHandler(tornado.web.RequestHandler):
         self.flush()
         self.camera.listen_images(self)
 
+    @tornado.gen.coroutine
     def push_image(self, image):
-        if len(self.boundary) < 1 or self.flushing:
+        if len(self.boundary) < 1 or self.writing:
             return
-        
+        chunk_length = 2048
+        self.writing = True
+
         self.write(self.boundary)
         self.write("\r\n")
         self.write("Content-type: image/jpeg\r\n")
         self.write("Content-length: %d\r\n\r\n" % len(image))
-        self.write(image)
+        for i in range(0, len(image), chunk_length):
+            self.write(image[0+i:chunk_length+i])
+            yield self.flush()
         self.write("\r\n")
-        self.flushing = True
-        self.flush(callback=lambda: self.on_flush_complete())
-
-    def on_flush_complete(self):
-        self.flushing = False
+        self.flush()
+        self.writing = False
 
     def on_finish(self):
         self.camera.unlisten_images(self)
