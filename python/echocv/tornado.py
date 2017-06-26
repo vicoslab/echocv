@@ -4,6 +4,7 @@ from __future__ import absolute_import
 import echolib
 import echocv
 
+import math
 import cv2
 
 from tornado.ioloop import IOLoop
@@ -23,6 +24,22 @@ def install_client(ioloop, client, callback=None):
 
 def uninstall_client(ioloop, client):
     ioloop.remove_handler(client.fd())
+
+class Image(object):
+    def __init__(self, raw):
+        self._raw = raw
+        self._jpeg = None
+
+    def raw(self):
+        return self._raw
+
+    def jpeg(self):
+        if self._jpeg is None:
+            result, data = cv2.imencode('.jpg', self._raw, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            if result == False:
+                return None
+            self._jpeg = str(data.data)
+        return self._jpeg
 
 class Camera(object):
     def __init__(self, client, name):
@@ -64,10 +81,8 @@ class Camera(object):
 
     def _image_callback(self, image):
         if len(self._image_listeners) > 0:
-            result, data = cv2.imencode('.jpg', image, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-            if result == False:
-                return
-            self._distribute_image(str(data.data))
+            img = Image(image)
+            self._distribute_image(img)
 
     def _location_callback(self, location):
         self._distribute_location(location)
@@ -80,7 +95,7 @@ class VideoHandler(tornado.web.RequestHandler):
     def __init__(self, application, request, camera):
         super(VideoHandler, self).__init__(application, request)
         self.camera = camera
-        self.writing = False
+        self.flushing = False
 
     @tornado.web.asynchronous
     def get(self):
@@ -90,23 +105,23 @@ class VideoHandler(tornado.web.RequestHandler):
         self.flush()
         self.camera.listen_images(self)
 
-    @tornado.gen.coroutine
     def push_image(self, image):
-        if len(self.boundary) < 1 or self.writing:
+        if len(self.boundary) < 1 or self.flushing:
             return
-        chunk_length = 2048
-        self.writing = True
+        
+        data = image.jpeg()
 
         self.write(self.boundary)
         self.write("\r\n")
         self.write("Content-type: image/jpeg\r\n")
-        self.write("Content-length: %d\r\n\r\n" % len(image))
-        for i in range(0, len(image), chunk_length):
-            self.write(image[0+i:chunk_length+i])
-            yield self.flush()
+        self.write("Content-length: %d\r\n\r\n" % len(data))
+        self.write(data)
         self.write("\r\n")
-        self.flush()
-        self.writing = False
+        self.flushing = True
+        self.flush(callback=lambda: self.on_flush_complete())
+
+    def on_flush_complete(self):
+        self.flushing = False
 
     def on_finish(self):
         self.camera.unlisten_images(self)
