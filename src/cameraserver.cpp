@@ -73,13 +73,16 @@ int main(int argc, char** argv) {
         a = std::chrono::system_clock::now();
         std::chrono::duration<double, std::milli> work_time = a - b;
 
+        b = a;
+
         if (frame.empty()) return -1;
 
         if (image_publisher->get_subscribers() > 0) {
             image_publisher->send(frame);
         }
 
-        std::chrono::duration<double, std::milli> delta_ms(1000.0 / fps - work_time.count());
+        std::chrono::duration<double, std::milli> delta_ms(max(0.0, 1000.0 / fps - (double)work_time.count()));
+        
         auto delta_ms_duration = std::chrono::duration_cast<std::chrono::milliseconds>(delta_ms);
 
         if (!echolib::wait(max(10, (int)delta_ms_duration.count()))) break;
