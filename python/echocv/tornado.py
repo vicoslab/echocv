@@ -146,7 +146,7 @@ class ImageHandler(tornado.web.RequestHandler):
         self.camera.listen_images(self)
 
     def push_image(self, image):
-        self.write(image)
+        self.write(image.jpeg())
         self.finish()
 
     def on_finish(self):
