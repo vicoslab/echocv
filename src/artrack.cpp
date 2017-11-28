@@ -7,6 +7,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/video/video.hpp>
 #ifdef ENABLE_HIGHGUI
 #include <opencv2/highgui/highgui.hpp>
 #endif
@@ -458,7 +459,7 @@ private:
 	void normalizePattern(const Mat& src, const Point2f roiPoints[], Rect& rec, Mat& dst) {
 
 		//compute the homography
-		Mat homography = getPerspectiveTransform( roiPoints, norm2DPts);
+		Mat homography = getPerspectiveTransform(roiPoints, norm2DPts);
 		cv::Mat subImg = src(cv::Range(rec.y, rec.y + rec.height), cv::Range(rec.x, rec.x + rec.width));
 
 		//warp the input based on the homography model to get the normalized ROI
@@ -503,7 +504,12 @@ private:
 
 };
 
+bool debug = false;
+
 Mat image_current;
+Ptr<BackgroundSubtractorMOG2> scene_model;
+int force_update_counter;
+int force_update_threshold;
 CameraExtrinsics location;
 CameraIntrinsics parameters;
 
@@ -545,6 +551,43 @@ bool localize_camera(vector<PatternDetection> detections) {
 	Rodrigues(rotVec, location.rotation);
 
 	return true;
+}
+
+bool scene_change(Mat& image) {
+
+	if (image.empty())
+		return false;
+
+	Mat candidate, mask;
+	resize(image, candidate, Size(64, 64));
+
+	if (scene_model.empty()) {
+		scene_model = Ptr<BackgroundSubtractorMOG2>(new BackgroundSubtractorMOG2(100, 4, false));
+	}
+
+	if (force_update_counter > force_update_threshold) {
+		force_update_counter = 0;
+		return true;
+	}
+
+	force_update_counter++;
+
+	scene_model->operator()(candidate, mask);
+
+	#ifdef ENABLE_HIGHGUI
+	if (debug) {
+		imshow("Changes", mask);
+	}
+	#endif
+
+	float changes = (float)(sum(mask)[0]) / (float)(mask.cols * mask.rows * 255);
+
+	if (changes > 0.2) {
+		force_update_counter = 0;
+		return true;
+	} else {
+		return false;
+	}
 }
 
 void handle_frame(Mat& image) {
@@ -615,10 +658,12 @@ int main(int argc, char** argv) {
 	}
 
 #ifdef ENABLE_HIGHGUI
-	bool debug = false;
 	Mat debug_image;
 	debug = getenv("SHOW_DEBUG") != NULL;
 #endif
+
+	force_update_threshold = 100;
+	force_update_counter = force_update_threshold;
 
 	Ptr<PatternDetector> detector;
 
@@ -629,14 +674,15 @@ int main(int argc, char** argv) {
 	location.rotation = Matx33f::eye();
 	location.translation = (Matx31f::zeros());
 
+	shared_ptr<ImageSubscriber> sub;
+	location_publisher = make_shared<TypedPublisher<CameraExtrinsics> >(client, "location");
+
 	parameters_listener = make_shared<TypedSubscriber<CameraIntrinsics> >(client, "intrinsics",
 	[](shared_ptr<CameraIntrinsics> param) {
 		parameters = *param;
 		parameters_listener.reset();
-	});
 
-	shared_ptr<ImageSubscriber> sub;
-	location_publisher = make_shared<TypedPublisher<CameraExtrinsics> >(client, "location");
+	});
 
 	bool processing = false;
 
@@ -646,10 +692,13 @@ int main(int argc, char** argv) {
 		if (processing && !sub) {
 			sub = make_shared<ImageSubscriber>(client, "camera", handle_frame);
 		}
-		if (!processing && sub) {
+		if (!processing && sub && !debug) {
 			sub.reset();
 		}
 	});
+
+	if (debug)
+		sub = make_shared<ImageSubscriber>(client, "camera", handle_frame);
 
 	while (true) {
 
@@ -657,33 +706,36 @@ int main(int argc, char** argv) {
 			break;
 
 		if (!image_current.empty()) {
+			if (scene_change(image_current)) {
 
-			vector<PatternDetection> detectedPatterns;
+				vector<PatternDetection> detectedPatterns;
 
-			if (!detector.empty())
-				detector->detect(image_current, Mat(parameters.intrinsics), parameters.distortion, detectedPatterns);
+				if (!detector.empty())
+					detector->detect(image_current, Mat(parameters.intrinsics), parameters.distortion, detectedPatterns);
 
-			if (detectedPatterns.size() > 0) {
+				if (detectedPatterns.size() > 0) {
 
-				localize_camera(detectedPatterns);
-				location_publisher->send(location);
-			}
-
-			#ifdef ENABLE_HIGHGUI
-			if (debug) {
-				image_current.copyTo(debug_image);
-				for (size_t i = 0; i < detectedPatterns.size(); i++) {
-					detectedPatterns.at(i).draw(debug_image, Mat(parameters.intrinsics), parameters.distortion);
+					localize_camera(detectedPatterns);
+					location_publisher->send(location);
 				}
 
-				Mat rotVec;
-				Rodrigues(location.rotation, rotVec);
+				#ifdef ENABLE_HIGHGUI
+				if (debug) {
+					image_current.copyTo(debug_image);
 
-				drawSystem(debug_image, rotVec, Mat(location.translation), Mat(parameters.intrinsics), parameters.distortion, 80, 5);
+					for (size_t i = 0; i < detectedPatterns.size(); i++) {
+						detectedPatterns.at(i).draw(debug_image, Mat(parameters.intrinsics), parameters.distortion);
+					}
 
-				imshow("AR Track", debug_image);
+					Mat rotVec;
+					Rodrigues(location.rotation, rotVec);
+					drawSystem(debug_image, rotVec, Mat(location.translation), Mat(parameters.intrinsics), parameters.distortion, 80, 5);
+
+					imshow("AR Track", debug_image);
+				}
+				#endif
+
 			}
-			#endif
 
 			image_current.release();
 
