@@ -71,8 +71,8 @@ Mat read_mat(MessageReader& reader) {
 
 }
 
-PYBIND11_PLUGIN(pyechocv) {
-        py::module m("pyechocv", "OpenCV messaging support for Echo IPC library");
+PYBIND11_MODULE(pyechocv, m) {
+        //py::module m("pyechocv", "OpenCV messaging support for Echo IPC library");
 
         py::class_<ImagePublisher, std::shared_ptr<ImagePublisher> >(m, "ImagePublisher")
         .def(py::init<SharedClient, string>())
@@ -92,6 +92,5 @@ PYBIND11_PLUGIN(pyechocv) {
 
         m.def("readMat", &read_mat, "Read numpy array from message");
         m.def("writeMat", &write_mat, "Write numpy array to message");
-        return m.ptr();
-
+        //return m.ptr();
 }
