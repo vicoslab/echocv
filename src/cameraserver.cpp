@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
         parameters.intrinsics(0, 2) = (float)(frame.cols) / 2;
         parameters.intrinsics(1, 2) = (float)(frame.rows) / 2;
         parameters.intrinsics(2, 2) = 1;
-        parameters.distortion = (Mat_<double>(1,5) << 0, 0, 0, 0, 0);
+        parameters.distortion = (Mat_<float>(1,5) << 0, 0, 0, 0, 0);
     }
 
     parameters.width = frame.cols;

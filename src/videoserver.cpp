@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
         parameters.intrinsics(0, 2) = video.get(CV_CAP_PROP_FRAME_WIDTH) / 2;
         parameters.intrinsics(1, 2) = video.get(CV_CAP_PROP_FRAME_HEIGHT) / 2;
         parameters.intrinsics(2, 2) = 1;
-        parameters.distortion = (Mat_<double>(1,5) << 0, 0, 0, 0, 0);
+        parameters.distortion = (Mat_<float>(1,5) << 0, 0, 0, 0, 0);
     }
 
     parameters.width = video.get(CV_CAP_PROP_FRAME_WIDTH);
