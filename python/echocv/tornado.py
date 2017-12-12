@@ -10,16 +10,18 @@ import cv2
 from tornado.ioloop import IOLoop
 import tornado.web
 
-def install_client(ioloop, client, callback=None):
+def install_client(ioloop, client, disconnect_callback=None):
     def _tornado_handler(fd, events):
-        if events | IOLoop.READ:
-            client.handle_input()
-        elif events | IOLoop.WRITE:
-            client.handle_output()
-        else:
+        if events & IOLoop.ERROR:
             client.disconnect()
-            if callback:
-                callback(client)
+            if disconnect_callback:
+                disconnect_callback(client)
+        else:
+            if events & IOLoop.READ:
+                client.handle_input()
+            if events & IOLoop.WRITE:
+                client.handle_output()
+
     ioloop.add_handler(client.fd(), _tornado_handler, IOLoop.READ | IOLoop.WRITE | IOLoop.ERROR | IOLoop._EPOLLET)
 
 def uninstall_client(ioloop, client):
