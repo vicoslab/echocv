@@ -662,6 +662,8 @@ int main(int argc, char** argv) {
 	debug = getenv("SHOW_DEBUG") != NULL;
 #endif
 
+	bool localized = false;
+
 	force_update_threshold = 100;
 	force_update_counter = force_update_threshold;
 
@@ -714,9 +716,10 @@ int main(int argc, char** argv) {
 					detector->detect(image_current, Mat(parameters.intrinsics), parameters.distortion, detectedPatterns);
 
 				if (detectedPatterns.size() > 0) {
-
 					localize_camera(detectedPatterns);
-					location_publisher->send(location);
+					localized = true;
+				} else {
+					localized = false;
 				}
 
 				#ifdef ENABLE_HIGHGUI
@@ -735,6 +738,9 @@ int main(int argc, char** argv) {
 				}
 				#endif
 
+			} 
+			if (localized) {
+				location_publisher->send(location);
 			}
 
 			image_current.release();
