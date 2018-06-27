@@ -7,7 +7,6 @@ include(GNUInstallDirs)
 option(BUILD_APPS "Build echocv apps" ON)
 option(BUILD_PYTHON "Build python bindings" ON)
 option(BUILD_TESTS "Build test programs" OFF)
-option(BUILD_HIGHGUI "Build with more GUI debug support" OFF)
 
 set(ECHOCV_PYTHON_VERSION "2" CACHE STRING "Python version to use for compiling python bindings")
 
@@ -17,12 +16,7 @@ SET(EXECUTABLE_OUTPUT_PATH ${CMAKE_CURRENT_BINARY_DIR})
 SET(LIBRARY_OUTPUT_PATH ${CMAKE_CURRENT_BINARY_DIR})
 SET(CMAKE_CXX_STANDARD 11)
 
-IF (BUILD_HIGHGUI)
-FIND_PACKAGE(OpenCV REQUIRED core imgproc video calib3d highgui)
-add_definitions(-DENABLE_HIGHGUI)
-ELSE()
 FIND_PACKAGE(OpenCV REQUIRED core imgproc video calib3d)
-ENDIF()
 FIND_PACKAGE(echolib REQUIRED)
 
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/src/ ${CMAKE_CURRENT_SOURCE_DIR}/include/ ${echolib_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIR})
@@ -96,10 +90,7 @@ TARGET_LINK_LIBRARIES(echocv_image ${echolib_LIBRARIES} echocv m ${OpenCV_LIBS})
 ADD_EXECUTABLE(echocv_video src/videoserver.cpp)
 TARGET_LINK_LIBRARIES(echocv_video ${echolib_LIBRARIES} echocv m ${OpenCV_LIBS})
 
-ADD_EXECUTABLE(echocv_artrack src/artrack.cpp)
-TARGET_LINK_LIBRARIES(echocv_artrack ${echolib_LIBRARIES} echocv m ${OpenCV_LIBS} stdc++fs)
-
-install(TARGETS echocv_camera echocv_image echocv_video echocv_artrack DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS echocv_camera echocv_image echocv_video DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ENDIF ()
 
