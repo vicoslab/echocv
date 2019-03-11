@@ -90,7 +90,10 @@ TARGET_LINK_LIBRARIES(echocv_image ${echolib_LIBRARIES} echocv m ${OpenCV_LIBS})
 ADD_EXECUTABLE(echocv_video src/videoserver.cpp)
 TARGET_LINK_LIBRARIES(echocv_video ${echolib_LIBRARIES} echocv m ${OpenCV_LIBS})
 
-install(TARGETS echocv_camera echocv_image echocv_video DESTINATION ${CMAKE_INSTALL_BINDIR})
+ADD_EXECUTABLE(echocv_client src/videoclient.cpp)
+TARGET_LINK_LIBRARIES(echocv_client ${echolib_LIBRARIES} echocv m ${OpenCV_LIBS})
+
+install(TARGETS echocv_camera echocv_image echocv_video echocv_client DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ENDIF ()
 
