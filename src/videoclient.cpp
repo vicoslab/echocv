@@ -3,13 +3,15 @@
 #include <iostream>
 #include <fstream>
 #include <memory>
+#include <ctime>
+#include <chrono>
 #include <opencv2/opencv.hpp>
 
 #include <echolib/client.h>
 #include <echolib/datatypes.h>
 #include <echolib/helpers.h>
 
-#include "echolib/opencv.h"
+#include <echolib/opencv.h>
 
 using namespace std;
 using namespace echolib;
@@ -19,22 +21,27 @@ int main(int argc, char** argv) {
 
     SharedClient client = echolib::connect();
 
-    Mat frame;
+    shared_ptr<Frame> frame;
     bool incoming = false;
 
-    function<void(Mat&)> image_callback = [&](Mat& m) {
+    function<void(shared_ptr<Frame>)> frame_callback = [&](shared_ptr<Frame> m) {
 
         frame = m;
         incoming = true;
 
     };
 
-    SharedImageSubscriber image_subscriber = make_shared<ImageSubscriber>(client, "camera", image_callback);
+    SharedTypedSubscriber<Frame> frame_subscriber = make_shared<TypedSubscriber<Frame> >(client, "camera", frame_callback);
 
     while (true) {
 
         if (incoming) {
-            imshow("EchoCV demo", frame);
+
+            std::time_t tt = std::chrono::system_clock::to_time_t ( frame->header.timestamp );
+
+            cv::putText(frame->image, ctime(&tt), Point(10, 50), FONT_HERSHEY_SIMPLEX, 1.0, Scalar(255, 0, 0), 3);
+
+            imshow("EchoCV demo", frame->image);
             incoming = false;
         }
 

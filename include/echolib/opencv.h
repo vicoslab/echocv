@@ -1,5 +1,5 @@
-#ifndef __FINGERSCAPE_MSGS_H
-#define __FINGERSCAPE_MSGS_H
+#ifndef __ECHOCV_MESSAGES_H
+#define __ECHOCV_MESSAGES_H
 
 #include <opencv2/opencv.hpp>
 #include <echolib/client.h>
@@ -19,49 +19,60 @@ typedef struct CameraIntrinsics {
 } CameraIntrinsics;
 
 typedef struct CameraExtrinsics {
+    Header header;
     Matx33f rotation;
     Matx31f translation;
 } CameraExtrinsics;
 
-template<> inline void MessageWriter::write<Mat>(const Mat& src) {
+class Frame {
+public:
+    Frame(Header header = Header(), Mat image = Mat());
+    ~Frame();
 
-    write<ushort>(src.rows);
-    write<ushort>(src.cols);
-    write<int>(src.type());
+    Header header;
+    Mat image;
+};
 
-    for (int i = 0; i < src.rows; i++) {
+class MatBuffer : public Buffer {
+public:
+    MatBuffer(const Mat& mat, function<void()> complete = NULL);
 
-        for (int j = 0; j < src.cols; j++) {
+    virtual ~MatBuffer();
 
-            write<float>(src.at<float>(i, j));
+    virtual ssize_t get_length() const;
 
-        }
+    virtual ssize_t copy_data(ssize_t position, uchar* buffer, ssize_t length) const;
 
-    }
+private:
+
+    const Mat mat;
+    ssize_t mat_length;
+    function<void()> complete;
+
+};
+
+template<> inline void read(MessageReader& reader, Mat& dst) {
+
+    int cols = reader.read<ushort>();
+    int rows = reader.read<ushort>(); 
+    int type = reader.read<int>();
+
+    dst.create(rows, cols, type);
+
+    reader.copy_data(dst.data, dst.cols * dst.rows * dst.elemSize());
 
 }
 
-template<> inline Mat MessageReader::read<Mat>() {
+template<> void write(MessageWriter& writer, const Mat& src) {
+    
+    writer.write<ushort>(src.cols);
+    writer.write<ushort>(src.rows);
+    writer.write<int>(src.type());
 
-    ushort h = read<ushort>();
-    ushort w = read<ushort>();
-    int t = read<int>();
+    writer.write_buffer(src.data, src.cols * src.rows * src.elemSize());
 
-    Mat data(h, w, t);
 
-    for (int i = 0; i < data.rows; i++) {
-
-        for (int j = 0; j < data.cols; j++) {
-
-            data.at<float>(i, j) = read<float>();
-
-        }
-
-    }
-
-    return data;
 }
-
 
 template<typename T, int m, int n> void write(MessageWriter& writer, const Matx<T, m, n>& src) {
     
@@ -101,6 +112,7 @@ template<> inline shared_ptr<Message> echolib::Message::pack<CameraExtrinsics>(c
 {
     MessageWriter writer(12 * sizeof(float));
 
+    write(writer, data.header);
     write(writer, data.rotation);
     write(writer, data.translation);
 
@@ -112,6 +124,7 @@ template<> inline shared_ptr<CameraExtrinsics> echolib::Message::unpack<CameraEx
     MessageReader reader(message);
 
     shared_ptr<CameraExtrinsics> result(new CameraExtrinsics());
+    read(reader, result->header);
     read(reader, result->rotation);
     read(reader, result->translation);
     return result;
@@ -126,7 +139,7 @@ template<> inline shared_ptr<Message> echolib::Message::pack<CameraIntrinsics>(c
     writer.write<int>(data.width);
     writer.write<int>(data.height);
     write(writer, data.intrinsics);
-    writer.write<Mat>(data.distortion);
+    write(writer, data.distortion);
 
     return make_shared<BufferedMessage>(writer);
 }
@@ -139,54 +152,36 @@ template<> inline shared_ptr<CameraIntrinsics> echolib::Message::unpack<CameraIn
     result->width = reader.read<int>();
     result->height = reader.read<int>();
     read(reader, result->intrinsics);
-    result->distortion = reader.read<Mat>();
+    read(reader, result->distortion);
     return result;
 }
 
-class ImageSubscriber : public ChunkedSubscriber, public std::enable_shared_from_this<ImageSubscriber> {
-public:
-    ImageSubscriber(SharedClient client, const string &alias, function<void(Mat&)> callback);
+template <> inline string get_type_identifier<Frame>() { return string("camera frame"); }
 
-    virtual ~ImageSubscriber();
-    
-    virtual void on_message(SharedMessage message);
 
-protected:
+template<> inline shared_ptr<Message> echolib::Message::pack<Frame>(const Frame &data) {
 
-    virtual void on_ready();
+    MessageWriter writer;
+    write(writer, data.header);
+    writer.write<ushort>(data.image.cols);
+    writer.write<ushort>(data.image.rows);
+    writer.write<int>(data.image.type());
 
-private:
+    vector<SharedBuffer> buffers;
+    buffers.push_back(make_shared<BufferedMessage>(writer));
+    buffers.push_back(make_shared<MatBuffer>(data.image));
 
-    function<void(Mat&)> callback;
+    return make_shared<MultiBufferMessage>(buffers);
+}
 
-};
+template<> inline shared_ptr<Frame> echolib::Message::unpack<Frame>(SharedMessage message) {
+    MessageReader reader(message);
 
-class ImagePublisher : public ChunkedPublisher, public Watcher, public std::enable_shared_from_this<ImagePublisher> {
-public:
-    ImagePublisher(SharedClient client, const string &alias, int queue_size = 1);
-
-    virtual ~ImagePublisher();
-    
-    bool send(Mat &mat);
-
-    virtual void on_event(SharedDictionary message);
-
-    int get_subscribers();
-
-private:
-
-	static void throttle_callback(shared_ptr<ImagePublisher> publisher);
-
-	int pending_images;
-
-    int subscribers;
-
-    int queue_size;
-
-};
-
-typedef shared_ptr<ImageSubscriber> SharedImageSubscriber;
-typedef shared_ptr<ImagePublisher> SharedImagePublisher;
+    shared_ptr<Frame> result(new Frame());
+    read(reader, result->header);
+    read(reader, result->image);
+    return result;
+}
 
 }
 

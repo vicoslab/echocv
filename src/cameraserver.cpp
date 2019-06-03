@@ -11,7 +11,7 @@
 #include <echolib/helpers.h>
 #include <echolib/loop.h>
 
-#include "echolib/opencv.h"
+#include <echolib/opencv.h>
 
 using namespace std;
 using namespace echolib;
@@ -25,10 +25,10 @@ int main(int argc, char** argv) {
 
     int cameraid = (argc < 2 ? 0 : atoi(argv[1]));
 
-    SharedClient client = echolib::connect();
+    SharedClient client = echolib::connect(string(), "cameraserver");
 
     VideoCapture device;
-    Mat frame;
+    Mat image;
 
     device.open(cameraid);
 
@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    device >> frame;
+    device >> image;
 
     FileStorage fsc("calibration.xml", FileStorage::READ);
     if (fsc.isOpened()) {
@@ -46,16 +46,18 @@ int main(int argc, char** argv) {
     } else {
         parameters.intrinsics(0, 0) = 700;
         parameters.intrinsics(1, 1) = 700;
-        parameters.intrinsics(0, 2) = (float)(frame.cols) / 2;
-        parameters.intrinsics(1, 2) = (float)(frame.rows) / 2;
+        parameters.intrinsics(0, 2) = (float)(image.cols) / 2;
+        parameters.intrinsics(1, 2) = (float)(image.rows) / 2;
         parameters.intrinsics(2, 2) = 1;
         parameters.distortion = (Mat_<float>(1,5) << 0, 0, 0, 0, 0);
     }
 
-    parameters.width = frame.cols;
-    parameters.height = frame.rows;
+    parameters.width = image.cols;
+    parameters.height = image.rows;
 
-    SharedImagePublisher image_publisher = make_shared<ImagePublisher>(client, "camera");
+    SharedTypedPublisher<Frame> frame_publisher = make_shared<TypedPublisher<Frame> >(client, "camera", 1);
+
+    SubscriptionWatcher watcher(client, "camera");
 
     StaticPublisher<CameraIntrinsics> intrinsics_publisher = StaticPublisher<CameraIntrinsics>(client, "intrinsics", parameters);
 
@@ -68,17 +70,19 @@ int main(int argc, char** argv) {
     std::chrono::system_clock::time_point b = std::chrono::system_clock::now();
 
     while (true) {
-        device >> frame;
+        device >> image;
 
         a = std::chrono::system_clock::now();
         std::chrono::duration<double, std::milli> work_time = a - b;
 
         b = a;
 
-        if (frame.empty()) return -1;
+        if (image.empty()) return -1;
 
-        if (image_publisher->get_subscribers() > 0) {
-            image_publisher->send(frame);
+        if (watcher.get_subscribers() > 0) {
+            Frame frame(Header("camera", a), image);
+
+            frame_publisher->send(frame);
         }
 
         std::chrono::duration<double, std::milli> delta_ms(max(0.0, 1000.0 / fps - (double)work_time.count()));

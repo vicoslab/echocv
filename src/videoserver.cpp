@@ -9,7 +9,7 @@
 #include <echolib/datatypes.h>
 #include <echolib/helpers.h>
 
-#include "echolib/opencv.h"
+#include <echolib/opencv.h>
 
 using namespace std;
 using namespace echolib;
@@ -23,9 +23,9 @@ int main(int argc, char** argv) {
 
     string filename(argv[1]);
 
-    SharedClient client = echolib::connect();
+    SharedClient client = echolib::connect(string(), "videoserver");
 
-    Mat frame;
+    Mat image;
 
     VideoCapture video(filename);
 
@@ -50,20 +50,25 @@ int main(int argc, char** argv) {
     parameters.width = video.get(CV_CAP_PROP_FRAME_WIDTH);
     parameters.height = video.get(CV_CAP_PROP_FRAME_HEIGHT);
 
-    SharedImagePublisher image_publisher = make_shared<ImagePublisher>(client, "camera");
+    SharedTypedPublisher<Frame> frame_publisher = make_shared<TypedPublisher<Frame> >(client, "camera", 1);
+
+    SubscriptionWatcher watcher(client, "camera");
 
     StaticPublisher<CameraIntrinsics> intrinsics_publisher = StaticPublisher<CameraIntrinsics>(client, "intrinsics", parameters);
 
     while (true) {
-        video >> frame;
-        if (frame.empty()) {
+        video >> image;
+        if (image.empty()) {
             video.set(CV_CAP_PROP_POS_FRAMES, 0);
             continue;
         }
 
+        std::chrono::system_clock::time_point a = std::chrono::system_clock::now();
 
-        if (image_publisher->get_subscribers() > 0) {
-            image_publisher->send(frame);
+        if (watcher.get_subscribers() > 0) {
+            Frame frame(Header("video", a), image);
+
+            frame_publisher->send(frame);
         }
         if (!echolib::wait(30)) break;
     }

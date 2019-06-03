@@ -28,12 +28,16 @@ def uninstall_client(ioloop, client):
     ioloop.remove_handler(client.fd())
 
 class Image(object):
-    def __init__(self, raw):
-        self._raw = raw
+    def __init__(self, frame):
+        self._raw = frame.image
+        self._timestamp = frame.header.timestamp
         self._jpeg = None
 
     def raw(self):
         return self._raw
+
+    def timestamp(self):
+        return self._timestamp
 
     def jpeg(self):
         if self._jpeg is None:
@@ -56,7 +60,7 @@ class Camera(object):
     def listen_images(self, listener):
         self._image_listeners.append(listener)
         if len(self._image_listeners) == 1 and self._image is None:
-            self._image = echocv.ImageSubscriber(self._client, "%s.image" % self.name, lambda x: self._image_callback(x))
+            self._image = echocv.FrameSubscriber(self._client, "%s.image" % self.name, lambda x: self._frame_callback(x))
 
     def unlisten_images(self, listener):
         self._image_listeners.remove(listener)
@@ -81,9 +85,9 @@ class Camera(object):
         for c in self._location_listeners:
             c.push_camera_location(self, location)
 
-    def _image_callback(self, image):
+    def _frame_callback(self, frame):
         if len(self._image_listeners) > 0:
-            img = Image(image)
+            img = Image(frame)
             self._distribute_image(img)
 
     def _location_callback(self, location):
@@ -148,6 +152,7 @@ class ImageHandler(tornado.web.RequestHandler):
         self.camera.listen_images(self)
 
     def push_image(self, image):
+        self.set_header('X-Timestamp', image.timestamp().isoformat())
         self.write(image.jpeg())
         self.finish()
 

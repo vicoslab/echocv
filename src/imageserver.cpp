@@ -9,7 +9,7 @@
 #include <echolib/datatypes.h>
 #include <echolib/helpers.h>
 
-#include "echolib/opencv.h"
+#include <echolib/opencv.h>
 
 using namespace std;
 using namespace echolib;
@@ -23,11 +23,11 @@ int main(int argc, char** argv) {
 
     string filename(argv[1]);
 
-    SharedClient client = echolib::connect();
+    SharedClient client = echolib::connect(string(), "imageserver");
 
-    Mat frame = imread(filename);
+    Mat image = imread(filename);
 
-    if (frame.empty()) {
+    if (image.empty()) {
         cerr << "Cannot open image file " << filename << endl;
         return -1;
     }
@@ -39,22 +39,28 @@ int main(int argc, char** argv) {
     } else {
         parameters.intrinsics(0, 0) = 700;
         parameters.intrinsics(1, 1) = 700;
-        parameters.intrinsics(0, 2) = (float)(frame.cols) / 2;
-        parameters.intrinsics(1, 2) = (float)(frame.rows) / 2;
+        parameters.intrinsics(0, 2) = (float)(image.cols) / 2;
+        parameters.intrinsics(1, 2) = (float)(image.rows) / 2;
         parameters.intrinsics(2, 2) = 1;
         parameters.distortion = (Mat_<float>(1,5) << 0, 0, 0, 0, 0);
     }
 
-    parameters.width = frame.cols;
-    parameters.height = frame.rows;
+    parameters.width = image.cols;
+    parameters.height = image.rows;
 
-    SharedImagePublisher image_publisher = make_shared<ImagePublisher>(client, "camera");
+    SharedTypedPublisher<Frame> frame_publisher = make_shared<TypedPublisher<Frame> >(client, "camera", 1);
+
+    SubscriptionWatcher watcher(client, "camera");
 
     StaticPublisher<CameraIntrinsics> intrinsics_publisher = StaticPublisher<CameraIntrinsics>(client, "intrinsics", parameters);
 
     while (true) {
-        if (image_publisher->get_subscribers() > 0) {
-            image_publisher->send(frame);
+        
+        if (watcher.get_subscribers() > 0) {
+            Frame frame(Header("image"), image);
+
+            frame_publisher->send(frame);
+
         }
         if (!echolib::wait(30)) break;
     }
