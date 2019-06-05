@@ -39,14 +39,14 @@ public:
 
     virtual ~MatBuffer();
 
-    virtual ssize_t get_length() const;
+    virtual size_t get_length() const;
 
-    virtual ssize_t copy_data(ssize_t position, uchar* buffer, ssize_t length) const;
+    virtual size_t copy_data(size_t position, uchar* buffer, size_t length) const;
 
 private:
 
     const Mat mat;
-    ssize_t mat_length;
+    size_t mat_length;
     function<void()> complete;
 
 };

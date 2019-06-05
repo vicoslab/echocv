@@ -23,11 +23,11 @@ MatBuffer::~MatBuffer() {
         complete();
 }
 
-ssize_t MatBuffer::get_length() const {
+size_t MatBuffer::get_length() const {
     return mat_length;
 }
 
-ssize_t MatBuffer::copy_data(ssize_t position, uchar* buffer, ssize_t length) const {
+size_t MatBuffer::copy_data(size_t position, uchar* buffer, size_t length) const {
     length = min(length, mat_length - position);
     if (length < 1) return 0;
 
