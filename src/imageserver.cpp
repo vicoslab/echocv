@@ -3,7 +3,8 @@
 #include <iostream>
 #include <fstream>
 #include <memory>
-#include <opencv2/opencv.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 #include <echolib/client.h>
 #include <echolib/datatypes.h>
@@ -24,14 +25,14 @@ int main(int argc, char** argv) {
     string filename(argv[1]);
 
     SharedClient client = echolib::connect(string(), "imageserver");
-
-    Mat image = imread(filename);
+ 
+    Mat image = imread(filename.c_str());
 
     if (image.empty()) {
         cerr << "Cannot open image file " << filename << endl;
         return -1;
     }
-
+/*
     FileStorage fsc("calibration.xml", FileStorage::READ);
     if (fsc.isOpened()) {
         READ_MATX(fsc["intrinsic"], parameters.intrinsics);
@@ -44,7 +45,7 @@ int main(int argc, char** argv) {
         parameters.intrinsics(2, 2) = 1;
         parameters.distortion = (Mat_<float>(1,5) << 0, 0, 0, 0, 0);
     }
-
+*/
     parameters.width = image.cols;
     parameters.height = image.rows;
 
