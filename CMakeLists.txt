@@ -8,8 +8,6 @@ option(BUILD_APPS "Build echocv apps" ON)
 option(BUILD_PYTHON "Build python bindings" ON)
 option(BUILD_TESTS "Build test programs" OFF)
 
-set(ECHOCV_PYTHON_VERSION "2" CACHE STRING "Python version to use for compiling python bindings")
-
 SET(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
 SET(EXECUTABLE_OUTPUT_PATH ${CMAKE_CURRENT_BINARY_DIR})
@@ -70,8 +68,8 @@ install(
 IF (BUILD_PYTHON)
 
     find_path(PYBIND11_INCLUDE_DIR pybind11/pybind11.h HINTS /usr/include DOC "PyBind11 include directory")
-    find_package(PythonInterp ${ECHO_PYTHON_VERSION} REQUIRED)
-    find_package(PythonLibs ${ECHO_PYTHON_VERSION} REQUIRED)
+    find_package(PythonInterp 3 REQUIRED)
+    find_package(PythonLibs 3 REQUIRED)
 
     add_library(pyechocv SHARED  src/conversion.cpp src/python.cpp)
     target_link_libraries(pyechocv echocv ${PYTHON_LIBRARY} ${echolib_LIBRARIES} ${OpenCV_LIBS})

@@ -1,28 +1,53 @@
 
 from __future__ import absolute_import
 
+import math
+from asyncio import Future, get_event_loop
+
+from tornado.ioloop import IOLoop
+from tornado.iostream import StreamClosedError
+import tornado.web
+import cv2
+
 import echolib
 import echocv
 
-import math
-import cv2
+class TornadoClientObserver(echolib.IOBaseObserver):
 
-from tornado.ioloop import IOLoop
-import tornado.web
+    def __init__(self, ioloop, client, disconnect_callback):
+        super().__init__()
+        self._ioloop = ioloop
+        self._client = client
+        self._canwrite = False
+        self._disconnect_callback = disconnect_callback
+        self._client.observe(self)
 
-def install_client(ioloop, client, disconnect_callback=None):
-    def _tornado_handler(fd, events):
+        if isinstance(ioloop, IOLoop):
+            ioloop.add_handler(client.fd(), self._ioevent, IOLoop.READ | IOLoop.ERROR)
+
+
+    def on_output(self, _):
+        if self._canwrite:
+            return
+
+        self._ioloop.update_handler(self._client.fd(), IOLoop.READ | IOLoop.ERROR | IOLoop.WRITE)
+
+    def _ioevent(self, _, events):
         if events & IOLoop.ERROR:
-            client.disconnect()
-            if disconnect_callback:
-                disconnect_callback(client)
+            self._client.disconnect()
+            if self._disconnect_callback:
+                self._self_disconnect_callback(self._client)
         else:
             if events & IOLoop.READ:
-                client.handle_input()
+                self._client.handle_input()
             if events & IOLoop.WRITE:
-                client.handle_output()
+                if self._client.handle_output():
+                    self._ioloop.update_handler(self._client.fd(), IOLoop.READ | IOLoop.ERROR)
+                    self._canwrite = False
 
-    ioloop.add_handler(client.fd(), _tornado_handler, IOLoop.READ | IOLoop.WRITE | IOLoop.ERROR | IOLoop._EPOLLET)
+
+def install_client(ioloop, client, disconnect_callback=None):
+    TornadoClientObserver(ioloop, client, disconnect_callback)
 
 def uninstall_client(ioloop, client):
     ioloop.remove_handler(client.fd())
@@ -44,46 +69,72 @@ class Image(object):
             result, data = cv2.imencode('.jpg', self._raw, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
             if result == False:
                 return None
-            self._jpeg = str(data.data)
+            self._jpeg = bytes(data.data)
         return self._jpeg
+
+class FutureCallback(object):
+
+    def __init__(self):
+        self._future = Future()
+
+    def __call__(self, _, result):
+        self._future.set_result(result)
+
+    async def wait(self):
+        return await self._future
 
 class Camera(object):
     def __init__(self, client, name):
         self.name = name
         self._image_listeners = []
         self._location_listeners = []
-        self._image = None
         self._client = client
-        self._parameters = echocv.CameraIntrinsicsSubscriber(client, "%s.parameters" % name, lambda x: self._parameters_callback(x))
-        self._location = None
+        self._parameters = None
+        self._parameters_sub = echocv.CameraIntrinsicsSubscriber(client, "%s.parameters" % name, self._parameters_callback)
+        self._location_sub = None
+        self._image_sub = None
+
+    async def image(self):
+        cb = FutureCallback()
+        self.listen_images(cb)
+        result = await cb.wait()
+        self.unlisten_images(cb)
+        return result
+
+    async def location(self):
+        cb = FutureCallback()
+        self.listen_location(cb)
+        result = await cb.wait()
+        self.unlisten_location(cb)
+        return result
 
     def listen_images(self, listener):
         self._image_listeners.append(listener)
-        if len(self._image_listeners) == 1 and self._image is None:
-            self._image = echocv.FrameSubscriber(self._client, "%s.image" % self.name, lambda x: self._frame_callback(x))
+        if len(self._image_listeners) == 1 and self._image_sub is None:
+            self._image_sub = echocv.FrameSubscriber(self._client, "%s.image" % self.name,self._frame_callback)
 
     def unlisten_images(self, listener):
         self._image_listeners.remove(listener)
-        if len(self._image_listeners) == 0 and not self._image is None:
-            self._image = None
+        if len(self._image_listeners) == 0 and not self._image_sub is None:
+            self._image_sub = None
 
     def listen_location(self, listener):
         self._location_listeners.append(listener)
-        if len(self._location_listeners) == 1 and self._location is None:
-            self._location = echocv.CameraExtrinsicsSubscriber(self._client, "%s.location" % self.name, lambda x: self._location_callback(x))
+        if len(self._location_listeners) == 1 and self._location_sub is None:
+            self._location_sub = echocv.CameraExtrinsicsSubscriber(self._client, "%s.location" % self.name, self._location_callback)
 
     def unlisten_location(self, listener):
         self._location_listeners.remove(listener)
-        if len(self._location_listeners) == 0 and not self._location is None:
-            self._location = None
+        if len(self._location_listeners) == 0 and not self._location_sub is None:
+            self._location_sub = None
 
-    def _distribute_image(self, image):       
+    def _distribute_image(self, image):
         for c in self._image_listeners:
-            c.push_image(image)
+            c(self, image)
             
-    def _distribute_location(self, location):       
+    def _distribute_location(self, location):
         for c in self._location_listeners:
-            c.push_camera_location(self, location)
+            c(self, location)
 
     def _frame_callback(self, frame):
         if len(self._image_listeners) > 0:
@@ -94,46 +145,61 @@ class Camera(object):
         self._distribute_location(location)
 
     def _parameters_callback(self, parameters):
-        self.parameters = parameters
+        self._parameters = parameters
+
+    @property
+    def parameters(self):
+        return self._parameters
 
 class VideoHandler(tornado.web.RequestHandler):
 
     def __init__(self, application, request, camera):
         super(VideoHandler, self).__init__(application, request)
         self.camera = camera
-        self.flushing = False
-
-    @tornado.web.asynchronous
-    def get(self):
-        # TODO: add random chars to binary
         self.boundary = '--imageboundary--'
+        self._future = None
+        self._running = True
+
+    async def get(self):
+        # TODO: add random chars to boundary
+
         self.set_header('Content-Type', 'multipart/x-mixed-replace; boundary=' + self.boundary)
         self.flush()
-        self.camera.listen_images(self)
 
-    def push_image(self, image):
-        if len(self.boundary) < 1 or self.flushing:
-            return
-        
-        data = image.jpeg()
 
-        self.write(self.boundary)
-        self.write("\r\n")
-        self.write("Content-type: image/jpeg\r\n")
-        self.write("Content-length: %d\r\n\r\n" % len(data))
-        self.write(data)
-        self.write("\r\n")
-        self.flushing = True
-        self.flush(callback=lambda: self.on_flush_complete())
+        self._future = Future()
+        self.camera.listen_images(self._image_cb)
 
-    def on_flush_complete(self):
-        self.flushing = False
+        try:
+            while self._running:
+                image = await self._future
+                self._future = Future()
+                if len(self.boundary) < 1:
+                    return
+                
+                data = image.jpeg()
+
+                self.write(self.boundary)
+                self.write("\r\n")
+                self.write("Content-type: image/jpeg\r\n")
+                self.write("Content-length: %d\r\n\r\n" % len(data))
+                self.write(data)
+                self.write("\r\n")
+                await self.flush()
+        except StreamClosedError:
+            pass
+
+        self.camera.unlisten_images(self._image_cb)
+
+    def _image_cb(self, _, image):
+        if not self._future.done():
+            self._future.set_result(image)
 
     def on_finish(self):
-        self.camera.unlisten_images(self)
+        self._running = False
 
     def on_connection_close(self):
-        self.camera.unlisten_images(self)
+        self._running = False
 
     def check_etag_header(self):
         return False
@@ -147,20 +213,11 @@ class ImageHandler(tornado.web.RequestHandler):
         self.set_header('Content-Type', 'image/jpeg')
         self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
 
-    @tornado.web.asynchronous
-    def get(self):
-        self.camera.listen_images(self)
-
-    def push_image(self, image):
+    async def get(self):
+        image = await self.camera.image()
         self.set_header('X-Timestamp', image.timestamp().isoformat())
         self.write(image.jpeg())
         self.finish()
-
-    def on_finish(self):
-        self.camera.unlisten_images(self)
-
-    def on_connection_close(self):
-        self.camera.unlisten_images(self)
 
     def check_etag_header(self):
         return False
